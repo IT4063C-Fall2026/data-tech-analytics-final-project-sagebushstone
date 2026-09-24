@@ -8,6 +8,9 @@ ipykernel = "*"
 jupyter = "*"
 notebook = "*"
 black = "*"
+geopandas = "*"
+dotenv = "*"
+python-dotenv = "*"
 
 [dev-packages]
 
