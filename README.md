@@ -20,11 +20,17 @@
 
 ### Reflection
 <!-- Edit the following section with your reflection -->
-
+*Edited as of Checkpoint 1
 #### What went well?
+ - Successfully getting all my data
 #### What did not go well?
+ - Needed to switch my dataset plan since the Google Geocoding API was just not feasible for the number of calls I would have had to make.
+ - Had to make more calls to the RentCast API than I would have wanted due to silly mistake when generating the API URL
 #### What did you learn?
+ - APIs are expensive and have limits. 
+ - How to use geopandas
 #### What would you do differently next time?
+ - Do more research about how the APIs function before starting to use them; this reduces costs and is more efficient
 
 ---
 
