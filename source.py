@@ -168,6 +168,14 @@ matched = matched.rename(columns={'SNA_NAME': 'neighborhood'})
 matched.to_csv("assets/AllListings.csv")
 
 
+# In[17]:
+
+
+# from here, getting all my data in one spot for future analysis and use
+listingdf = pd.read_csv("assets/AllListings.csv")
+crimedf = pd.read_csv("assets/CincinnatiCrimeReports.csv")
+
+
 # ## Resources and References
 # *What resources and references have you used for this project?*
 # 📝 <!-- Answer Below -->
