@@ -51,7 +51,7 @@
 # 
 # I plan to use a variety of analysis techniques in the development of this project. I will primarily use quantitative techniques to summarize and explain the current Cincinnati housing market. I will also develop predictive models for identifying future trends. The Rentcast API, Cincinnati crime reports dataset, and Cincinnati ArcGIS API mesh well together to be able to create a descriptive picture of the housing market. There is good quantitative data already stored in the datasets (like price or square footage) that can be analyzed further.
 
-# In[5]:
+# In[1]:
 
 
 # importing my libraries
@@ -62,7 +62,7 @@ from dotenv import load_dotenv, find_dotenv
 import geopandas as gpd
 
 
-# In[38]:
+# In[19]:
 
 
 # API url for rentcast
@@ -79,13 +79,45 @@ lastPage = False
 while lastPage == False:
     # query the api
     response = requests.get(rentcastURL + f"&offset={offset}", headers=headers)
-    df = pd.json_normalize(response.json())
+    df = response.json()
+
+    # include a mapping of fields since the API response seems to change across offsets, messing up the csv
+    field_mapping = {
+        "address": "formattedAddress",
+        "addressLine1": "addressLine1",
+        "addressLine2": "addressLine2",
+        "city": "city",
+        "state": "state",
+        "zipCode": "zipCode",
+        "county": "county",
+        "latitude": "latitude",
+        "longitude": "longitude",
+        "propertyType": "propertyType",
+        "bedrooms": "bedrooms",
+        "bathrooms": "bathrooms",
+        "squareFootage": "squareFootage",
+        "lotSize": "lotSize",
+        "yearBuilt": "yearBuilt",
+        "status": "status",
+        "price": "price",
+        "listingType": "listingType",
+        "listedDate": "listedDate",
+        "daysOnMarket": "daysOnMarket"
+    }
+
+    df = pd.DataFrame([
+        {
+            df_column: property_data.get(json_key)
+            for df_column, json_key in field_mapping.items()
+        }
+        for property_data in df
+    ])
 
     # include headers for the first response and not for the subsequent responses
     if offset != 0:
-        df.to_csv("assets/RentCastOutput.csv", mode='a', header=False, index=False, sep=",")
+        df.to_csv("assets/RentCastAPI.csv", mode='a', header=False, index=False, sep=",")
     else:
-        df.to_csv("assets/RentCastOutput.csv", header=True, index=False, sep=",")
+        df.to_csv("assets/RentCastAPI.csv", header=True, index=False, sep=",")
 
     # increase the offset by the limit (500) to go to the next page
     offset += 500
@@ -94,19 +126,6 @@ while lastPage == False:
     if offset >= int(response.headers['x-total-count']):
         lastPage = True
 
-
-
-# In[43]:
-
-
-df = pd.read_csv("assets/RentCastOutput.csv")
-
-df = df.loc[:, ~df.columns.str.startswith("history.")]
-
-df.to_csv(
-    "assets/RentCastOutputCleaned.csv",
-    index=False
-)
 
 
 # In[ ]:
@@ -136,12 +155,12 @@ with open("assets/cincinnatiNeighborhoods.geojson", "wb") as f:
     f.write(response.content)
 
 
-# In[ ]:
+# In[20]:
 
 
 # load neighborhoods and listings
 neighborhoods = gpd.read_file("assets/cincinnatiNeighborhoods.geojson")
-listings = pd.read_csv("assets/RentCastOutputCleaned.csv")
+listings = pd.read_csv("assets/RentCastAPI.csv")
 
 # setting the lat/long for each listing in the appropriate coordinate system
 geoListings = gpd.GeoDataFrame(
@@ -168,12 +187,34 @@ matched = matched.rename(columns={'SNA_NAME': 'neighborhood'})
 matched.to_csv("assets/AllListings.csv")
 
 
-# In[17]:
+# In[21]:
 
 
 # from here, getting all my data in one spot for future analysis and use
 listingdf = pd.read_csv("assets/AllListings.csv")
 crimedf = pd.read_csv("assets/CincinnatiCrimeReports.csv")
+
+
+# EXPLORATORY DATA ANALYSIS
+
+# In[22]:
+
+
+listingdf.sample(3)
+
+
+# In[23]:
+
+
+listingdf.info()
+listingdf.isna().sum()
+
+
+# In[ ]:
+
+
+# fixing datatype of the listedDate
+listingdf['listedDate'] = pd.to_datetime(listingdf['listedDate'])
 
 
 # ## Resources and References
@@ -183,6 +224,8 @@ crimedf = pd.read_csv("assets/CincinnatiCrimeReports.csv")
 # https://services.arcgis.com/JyZag7oO4NteHGiq/ArcGIS/rest/services/Open_Data_Feature_Collection/FeatureServer/12
 # 
 # https://developers.rentcast.io/reference/introduction
+
+# 
 
 # In[ ]:
 
