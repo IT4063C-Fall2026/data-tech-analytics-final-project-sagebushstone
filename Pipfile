@@ -11,6 +11,7 @@ black = "*"
 geopandas = "*"
 dotenv = "*"
 python-dotenv = "*"
+matplotlib = "*"
 
 [dev-packages]
 
