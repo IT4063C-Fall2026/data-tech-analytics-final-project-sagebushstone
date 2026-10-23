@@ -12,6 +12,7 @@ geopandas = "*"
 dotenv = "*"
 python-dotenv = "*"
 matplotlib = "*"
+seaborn = "*"
 
 [dev-packages]
 
