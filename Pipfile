@@ -13,6 +13,7 @@ dotenv = "*"
 python-dotenv = "*"
 matplotlib = "*"
 seaborn = "*"
+scikit-learn = "*"
 
 [dev-packages]
 
