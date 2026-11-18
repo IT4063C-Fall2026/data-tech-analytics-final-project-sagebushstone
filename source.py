@@ -51,7 +51,7 @@
 # 
 # I plan to use a variety of analysis techniques in the development of this project. I will primarily use quantitative techniques to summarize and explain the current Cincinnati housing market. I will also develop predictive models for identifying future trends. The Rentcast API, Cincinnati crime reports dataset, and Cincinnati ArcGIS API mesh well together to be able to create a descriptive picture of the housing market. There is good quantitative data already stored in the datasets (like price or square footage) that can be analyzed further.
 
-# In[29]:
+# In[86]:
 
 
 # importing my libraries
@@ -63,6 +63,15 @@ import geopandas as gpd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.metrics import mean_squared_error
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
 
 pd.set_option('display.float_format', lambda x: f'{x:.2f}')
 
@@ -192,7 +201,7 @@ matched = matched.rename(columns={'SNA_NAME': 'neighborhood'})
 matched.to_csv("assets/AllListings.csv")
 
 
-# In[24]:
+# In[4]:
 
 
 # from here, getting all my data in one spot for future analysis and use
@@ -219,7 +228,7 @@ print("# of duplicated rows:", listingdf.duplicated().sum())
 
 # In the cell below, I am rectifying some of the issues I noticed in the earlier cell. I am changing the data type of listedDate to make it a datetime. This would help me if I wanted to look at when a house was posted. I also dropped a couple of columns that I had used to map a listing to a neighborhood.
 
-# In[25]:
+# In[5]:
 
 
 # fixing datatype of the listedDate
@@ -248,7 +257,7 @@ plt.show()
 
 # Here, I am removing the anomalies by getting the upper whisker of the current dataframe, then recreating the data with just the prices less than that whisker. We can see that the boxplot seems much more reasonable, with the upper whisker now being at ~$575k. This will make the rest of my analysis more understandable, and we have less worry about expensive houses skewing the results.
 
-# In[32]:
+# In[6]:
 
 
 Q1 = listingdf["price"].quantile(0.25)
@@ -264,7 +273,7 @@ plt.show()
 
 # Now, I want to start doing exploratory data analysis on the crime dataset. I firstly want to change the datatypes of the date fields, then check info() to confirm all looks well. We have some null values in some fields, but not an excessive amount that I would be worried about. I would be comfortable leaving the dataset with just the datatype changes.
 
-# In[26]:
+# In[7]:
 
 
 crimedf['DateReported'] = pd.to_datetime(crimedf['DateReported'])
@@ -322,7 +331,7 @@ sns.heatmap(corrmatrix, annot=True, cmap='coolwarm')
 
 # The first time I ran the code below, there were two extreme outliers priced at 150k but having square footages of 30,000 and 40,000. I decided to remove these records to get a better understanding of the average home. The price is now displaying in scientific notation, but we can see that, generally, as house price increases, so does the square footage. There are some houses where the square footage is significantly higher than what the cost would imply. This could indicate a large home that is in poor condition. Homebuyers might want to stay away from such houses.
 
-# In[33]:
+# In[8]:
 
 
 listingdf = listingdf[listingdf["squareFootage"] < 30000]
@@ -349,12 +358,188 @@ plt.ylabel('Count')
 plt.show()
 
 
+# In[ ]:
+
+
+# actually merging the crime counts per neighborhood into the listing data for machine learning
+crime_counts = crimedf.groupby('SNA_Neighborhood').size().reset_index(name='crimeCount')
+listingdf = listingdf.merge(
+    crime_counts,
+    left_on='neighborhood',
+    right_on='SNA_Neighborhood',
+    how='left'
+)
+listingdf.head()
+finaldf = listingdf[['propertyType', 'bedrooms', 'bathrooms', 'squareFootage', 'lotSize', 'yearBuilt', 'price', 'crimeCount']]
+
+
+# In[39]:
+
+
+finaldf.to_csv("assets/ML_Dataset.csv")
+
+
+# In[41]:
+
+
+# resetting the data so I don't need to re-run all the previous steps to get it into a workable state
+finaldf = pd.read_csv("assets/ML_Dataset.csv")
+
+
+# In[ ]:
+
+
+# this is to check how many nulls I have now that I would need to impute.
+# I removed some features that had many nulls since I was worried that many imputions would skew results
+finaldf.info()
+
+
+# In[ ]:
+
+
+# creating the random training/testing sets
+random_train_set, random_test_set = train_test_split(finaldf, test_size= 0.2, random_state=42)
+
+
+# In[44]:
+
+
+house_X = random_train_set.drop('price', axis=1)
+house_y = random_train_set['price']
+
+
+# In[60]:
+
+
+house_X_num = house_X.drop(['propertyType', 'Unnamed: 0'], axis=1)
+house_X_cat = house_X[['propertyType']]
+
+
+# In[ ]:
+
+
+# creating the ML pipelines that will automatically impute, scale, and encode the listing data
+num_pipeline = Pipeline([
+    ('imputer', SimpleImputer(strategy='mean')),
+    ('standard', StandardScaler())
+])
+cat_pipeline = Pipeline([
+    ('one-hot-encode', OneHotEncoder(handle_unknown='ignore'))
+])
+full_pipeline = ColumnTransformer([
+    ('num', num_pipeline, list(house_X_num)),
+    ('cat', cat_pipeline, ['propertyType'])
+])
+house_X_prepared = full_pipeline.fit_transform(house_X)
+
+
+# In[79]:
+
+
+all_columns = full_pipeline.get_feature_names_out()
+house_X_prepared = pd.DataFrame(
+    house_X_prepared,
+    columns=all_columns,
+    index=house_X.index
+)
+house_X_prepared.head()
+
+
+# In[80]:
+
+
+lin_reg = LinearRegression()
+lin_reg.fit(house_X_prepared, house_y)
+
+
+# In[88]:
+
+
+poly_features = PolynomialFeatures(degree=2)
+house_X_poly = poly_features.fit_transform(house_X_prepared)
+poly_reg = LinearRegression()
+
+poly_reg.fit(house_X_poly, house_y)
+
+
+# In[ ]:
+
+
+# testing one specific house that is not in the dataset against both models. The expected price is $260,000
+input_data = {
+    "bedrooms": [3],
+    "bathrooms": [1],
+    "squareFootage": [1040],
+    "lotSize": [5700],
+    "yearBuilt": [1962],
+    "crimeCount": [200],
+    "propertyType": ["Single Family"]
+}
+input_df = pd.DataFrame(input_data)
+
+input_transformed = full_pipeline.transform(input_df)
+pred_lin = lin_reg.predict(input_transformed)
+
+input_poly = poly_features.transform(input_transformed)
+pred_poly = poly_reg.predict(input_poly)
+
+print(pred_lin)
+print(pred_poly)
+
+
+# In[ ]:
+
+
+# testing the test set against the models and finding the rmse
+test_X = random_test_set.drop('price', axis=1)
+test_y = random_test_set['price']
+test_X_prepared = full_pipeline.transform(test_X)
+
+test_predictions_lin = lin_reg.predict(test_X_prepared)
+
+test_lin_mse = mean_squared_error(test_y, test_predictions_lin)
+test_lin_rmse = np.sqrt(test_lin_mse)
+
+test_X_poly = poly_features.transform(test_X_prepared)
+
+test_predictions_poly = poly_reg.predict(test_X_poly)
+
+test_poly_mse = mean_squared_error(test_y, test_predictions_poly)
+test_poly_rmse = np.sqrt(test_poly_mse)
+
+predictions = poly_reg.predict(house_X_poly)
+poly_mse = mean_squared_error(house_y, predictions)
+poly_rmse = np.sqrt(poly_mse)
+
+predictions = lin_reg.predict(house_X_prepared)
+lin_mse = mean_squared_error(house_y, predictions)
+lin_rmse = np.sqrt(lin_mse)
+
+
+# In[94]:
+
+
+print(f"Linear Regression RMSE on the training set: {lin_rmse}")
+print(f"Linear Regression RMSE on the test set: {test_lin_rmse}")
+
+print(f"Polynomial Regression RMSE on the training set: {poly_rmse}")
+print(f"Polynomial Regression RMSE on the test set: {test_poly_rmse}")
+
+
+# MACHINE LEARNING ANALYSIS
+# 
+# Overall, the polynomial regression on degree=2 did better than linear regression at predicting house price from several features. However, neither model were very accurate. This can be seen from the RMSE for both; they are about $100,000 different from the actual list price. However, polynomial regression did slightly better as the RMSE was slightly lower. We can also see for the individual house I tested that the polynomial regression did a better job of predicting but still not great; that house was supposed to be $260,000. To improve the model, we might need to add more features. I removed some features when I was doing the EDA for the ML section but maybe adding them back would be beneficial. Alternatively, I might need a more complete dataset, as I had to impute some values.
+# 
+# CHECKPOINT 3 FEEDBACK
+# 
+# I received some feedback from a peer that I should account for population density when looking at the crimes. This was a great idea. However, I didn't have a good way to get the population for each neighborhood. I decided that scaling the crime count per neighborhood and imputing the mean when there was no neighborhood found would have to be enough. In the future, I would like to try to find some details about total population per neighborhood, as this could improve the results.
+
 # MACHINE LEARNING PLAN
 # 
 # I plan to use supervised machine learning for this project. House listing data lends itself well to the regression type of machine learning. I want to predict house price based on a number of features, including square footage, year built, number of beds/baths, neighborhood, etc. One aspect with using neighborhood as a feature is that for regression, all the features need to be numeric, so I would have to encode each neighborhood with a number. This should be simple enough to address, and I may need to do it for other categorical variables I decide to utilize. Additionally, I am concerned that the correlation map does not have very high correlations for most features, so I wonder how well I will be able to predict house data. Still, I plan to mitigate this as much as possible by utilizing 75% training, 25% testing data so I can fit the model appropriately. Overall, the EDA and data cleaning segment gave me a good understanding of what the data looks like so I can best pursue an effective machine learning model.
 # 
 # 
-# PRIOR FEEDBACK AND UPDATES
+# CHECKPOINT 2 FEEDBACK
 # 
 # I did not receive any feedback from a peer nor from the teaching team for the first part of the project. However, I did have to make some updates to how my listing data was being pulled between the time of the last checkpoint and now. I belatedly realized that the JSON response from the RentCast API was outputting the fields in different orders or omitting some fields, which messed up the generation of the CSV. I had to entirely recreate the listing CSV. I did this by directly mapping the fields I wanted from the API into the Pandas dataframe. This way, I could avoid the columns being offset for the CSV and instead just deal with null values when they appear.
 
